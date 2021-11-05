@@ -14,9 +14,9 @@ class CustomPublicationService extends \App\Services\PublicationService
      * }
      * @return Iterator
      */
-    public function getMany($args = [], $eagerLoad = true)
+    public function getMany($args = [])
     {
-        $params = [];
+        $functionParams = [];
         $range = null;
 
         if (isset($args['count'])) {
@@ -32,40 +32,21 @@ class CustomPublicationService extends \App\Services\PublicationService
         import('plugins.generic.ojtRocket.classes.publication.CustomPublicationDAO');
 
         $customPublicationDAO = new CustomPublicationDAO();
-        $result = $customPublicationDAO->retrieveRange($publicationQO->toSql(), $publicationQO->getBindings(), $range);
+        $result = $customPublicationDAO->retrieveRange($sql = $publicationQO->toSql(), $params = $publicationQO->getBindings(), $range);
 
-        if ($eagerLoad && isset($args['submissionIds'])) {
-            $publicationIds = [];
-            $publications = $result->getAll();
-            $result->MoveFirst();
+        $list = $customPublicationDAO->retrieveRange($publicationQO->toSql(), $publicationQO->getBindings(), $range);
+        $publicationIds = [];
 
-            foreach ($publications as $publication) {
-                $publicationIds[] = $publication['publication_id'];
-            }
 
-            $params['authors'] = $this->getAuthors($publicationIds);
-            $params['galleys'] = $this->getGalley($publicationIds);
-
-            // dd($params);
-            // $params['keywords']  = $this->getKeywords($publicationIds);
-            // $params['subjects']  = false;
-            // $params['disciplines']  = false;
-            // $params['languages']  = false;
-            // $params['supportingAgencies']  = false;
-            // $params['categoryIds']  = false;
-
-            // dd($params);
-
-            // $publications = iterator_to_array(Services::get('publication')->getMany(['submissionIds' => $submissionIds]));
-
-            // $params['publications'] = $publications;
-            // echo '<pre>';
-            // var_dump($publications);
-            // echo '</pre>';
-            // exit;
+        foreach ($list as $publication) {
+            $publicationIds[] = $publication->publication_id;
         }
 
-        $queryResults = new DAOResultFactory($result, $customPublicationDAO, '_fromRow', [], $params);
+        $functionParams['authors'] = $this->getAuthors($publicationIds);
+        $functionParams['galleys'] = $this->getGalley($publicationIds);
+
+        import('plugins.generic.ojtRocket.classes.db.CustomDAOResultFactory');
+        $queryResults = new CustomDAOResultFactory($result, $customPublicationDAO, '_fromRow', [], $sql, $params, null, $functionParams);
         return $queryResults->toIterator();
     }
 
@@ -74,7 +55,6 @@ class CustomPublicationService extends \App\Services\PublicationService
         import('plugins.generic.ojtRocket.classes.services.CustomAuthorService');
         $authorService = new CustomAuthorService();
         $authors = $authorService->getMany(['publicationIds' => $publicationIds]);
-
         $publicationAuthor = [];
         foreach ($authors as $author) {
             $publicationAuthor[$author->getData('publicationId')][] = $author;

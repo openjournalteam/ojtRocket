@@ -8,7 +8,9 @@ class CustomAuthorService extends \PKP\Services\PKPAuthorService
     $authorQO = $this->getQueryBuilder($args)->getQuery();
     $authorDao = new CustomAuthorDAO(); /* @var $authorDao AuthorDAO */
     $result = $authorDao->retrieveRange($authorQO->toSql(), $authorQO->getBindings());
-    $queryResults = new DAOResultFactory($result, $authorDao, '_fromRow');
+
+    import('plugins.generic.ojtRocket.classes.db.CustomDAOResultFactory');
+    $queryResults = new CustomDAOResultFactory($result, $authorDao, '_fromRow');
 
     return $queryResults->toIterator();
   }

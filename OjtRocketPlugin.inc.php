@@ -25,7 +25,12 @@ class OjtRocketPlugin extends GenericPlugin
 		if ($success && $this->getEnabled()) {
 			// Display the publication statement on the article details page
 			HookRegistry::register('LoadHandler', [$this, 'setPageHandler']);
-			HookRegistry::register('Templates::Common::Footer::PageFooter', [$this, 'appendFooter']);
+			if ($this->getSetting($this->getCurrentContextId(), 'infinite_scroll')) {
+				HookRegistry::register('Templates::Common::Footer::PageFooter', [$this, 'appendFooter']);
+			}
+
+			// Allow plugin to override plugin template files
+			HookRegistry::register('TemplateResource::getFilename', array($this, '_overridePluginTemplates'));
 		}
 		return $success;
 	}
@@ -104,14 +109,11 @@ class OjtRocketPlugin extends GenericPlugin
 
 		$dao = new DAO;
 		$sql = 'SELECT s.section_id, COALESCE(o.seq, s.seq) AS section_seq FROM sections s LEFT JOIN custom_section_orders o ON (s.section_id = o.section_id AND o.issue_id = ?)  WHERE s.journal_id = ? ORDER BY section_seq';
-
 		$result = $dao->retrieve($sql, [$issue->getId(), $journal->getId()]);
 		$sectionIds = [];
 
-		while (!$result->EOF) {
-			$row = $result->getRowAssoc(false);
-			$sectionIds[] = $row['section_id'];
-			$result->MoveNext();
+		foreach ($result as $row) {
+			$sectionIds[] = $row->section_id;
 		}
 
 		$request = $this->getRequest();
@@ -124,12 +126,100 @@ class OjtRocketPlugin extends GenericPlugin
 		$templateMgr->assign('ojtRocket', $this);
 
 
-		$args[2]  = $templateMgr->fetch($this->getTemplateResource('components/footer_extend.tpl'));
+		$args[2]  = $templateMgr->fetch('frontend/components/footer_extend.tpl');
 		return true;
 	}
 
 	public function getAssetUrl($asset)
 	{
 		return $this->getRequest()->getBaseUrl() . '/' . $this->getPluginPath() . '/assets/' . $asset;
+	}
+
+	/**
+	 * Add a settings action to the plugin's entry in the
+	 * plugins list.
+	 *
+	 * @param Request $request
+	 * @param array $actionArgs
+	 * @return array
+	 */
+	// public function getActions($request, $actionArgs)
+	// {
+
+	// 	// Get the existing actions
+	// 	$actions = parent::getActions($request, $actionArgs);
+
+	// 	// Only add the settings action when the plugin is enabled
+	// 	if (!$this->getEnabled()) {
+	// 		return $actions;
+	// 	}
+
+	// 	// Create a LinkAction that will make a request to the
+	// 	// plugin's `manage` method with the `settings` verb.
+	// 	$router = $request->getRouter();
+	// 	import('lib.pkp.classes.linkAction.request.AjaxModal');
+	// 	$linkAction = new LinkAction(
+	// 		'settings',
+	// 		new AjaxModal(
+	// 			$router->url(
+	// 				$request,
+	// 				null,
+	// 				null,
+	// 				'manage',
+	// 				null,
+	// 				[
+	// 					'verb' => 'settings',
+	// 					'plugin' => $this->getName(),
+	// 					'category' => 'generic'
+	// 				]
+	// 			),
+	// 			$this->getDisplayName()
+	// 		),
+	// 		__('manager.plugins.settings'),
+	// 		null
+	// 	);
+
+	// 	// Add the LinkAction to the existing actions.
+	// 	// Make it the first action to be consistent with
+	// 	// other plugins.
+	// 	array_unshift($actions, $linkAction);
+
+	// 	return $actions;
+	// }
+
+	/**
+	 * Show and save the settings form when the settings action
+	 * is clicked.
+	 *
+	 * @param array $args
+	 * @param Request $request
+	 * @return JSONMessage
+	 */
+	public function manage($args, $request)
+	{
+		switch ($request->getUserVar('verb')) {
+			case 'settings':
+
+				// Load the custom form
+				$this->import('OjtRocketSettingsForm');
+				$form = new OjtRocketSettingsForm($this);
+
+				// Fetch the form the first time it loads, before
+				// the user has tried to save it
+				if (!$request->getUserVar('save')) {
+					$form->initData();
+					return new JSONMessage(true, $form->fetch($request));
+				}
+
+				// Validate and save the form data
+				$form->readInputData();
+				if ($form->validate()) {
+					$form->execute();
+					return new JSONMessage(true);
+				}
+		}
+
+
+		return parent::manage($args, $request);
 	}
 }

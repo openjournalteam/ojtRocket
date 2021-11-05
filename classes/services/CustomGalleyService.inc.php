@@ -10,7 +10,9 @@ class CustomGalleyService extends \APP\Services\GalleyService
     $galleyQO = $this->getQueryBuilder($args)->getQuery();
     $galleyDao = new CustomArticleGalleyDAO(); /* @var $galleyDao ArticleGalleyDAO */
     $result = $galleyDao->retrieveRange($galleyQO->toSql(), $galleyQO->getBindings());
-    $queryResults = new DAOResultFactory($result, $galleyDao, '_fromRow');
+
+    import('plugins.generic.ojtRocket.classes.db.CustomDAOResultFactory');
+    $queryResults = new CustomDAOResultFactory($result, $galleyDao, '_fromRow');
 
     return $queryResults->toIterator();
   }

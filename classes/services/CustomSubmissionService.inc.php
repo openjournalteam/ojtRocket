@@ -14,9 +14,9 @@ class CustomSubmissionService extends \App\Services\SubmissionService
    * }
    * @return Iterator
    */
-  public function getMany($args = [], $eagerLoad = true)
+  public function getMany($args = [])
   {
-    $params = [];
+    $functionParams = [];
     $range = null;
 
 
@@ -29,39 +29,29 @@ class CustomSubmissionService extends \App\Services\SubmissionService
     if (isset($args['count'])) unset($args['count']);
     if (isset($args['offset'])) unset($args['offset']);
     $submissionListQO = $this->getQueryBuilder($args)->getQuery();
-    // dd($submissionListQO->toSql(), $submissionListQO->getBindings());
-
     import('plugins.generic.ojtRocket.classes.submission.CustomSubmissionDAO');
 
     $submissionDao = new CustomSubmissionDAO(); /* @var $submissionDao SubmissionDAO */
-    $result = $submissionDao->retrieveRange($submissionListQO->toSql(), $submissionListQO->getBindings(), $range);
+    $result = $submissionDao->retrieveRange($sql = $submissionListQO->toSql(), $params = $submissionListQO->getBindings(), $range);
+    $submissionIds = [];
 
-    if ($eagerLoad && isset($args['issueIds'])) {
-      $submissionIds = [];
+    $list = $submissionDao->retrieveRange($sql, $params, $range);
+    foreach ($list as $submission) {
+      $submissionIds[] = $submission->submission_id;
+    }
+    import('plugins.generic.ojtRocket.classes.services.CustomPublicationService');
 
-      $submissions = $result->getAll();
-
-      $result->MoveFirst();
-
-      foreach ($submissions as $submission) {
-        $submissionIds[] = $submission['submission_id'];
-      }
-
-
-      import('plugins.generic.ojtRocket.classes.services.CustomPublicationService');
-      $customPublicationServices = new CustomPublicationService();
-      $publications = iterator_to_array($customPublicationServices->getMany(['submissionIds' => $submissionIds]));
-
-      $submissionPublications = [];
-      foreach ($publications as $publication) {
-        $submissionPublications[$publication->getData('submissionId')][] = $publication;
-      }
-
-      $params['submissionPublications'] = $submissionPublications;
+    $publications = (new CustomPublicationService())->getMany(['submissionIds' => $submissionIds]);
+    $submissionPublications = [];
+    foreach ($publications as $publication) {
+      $submissionPublications[$publication->getData('submissionId')][] = $publication;
     }
 
+    $functionParams['publications'] = $submissionPublications;
 
-    $queryResults = new DAOResultFactory($result, $submissionDao, '_fromRow', [], $params);
+    import('plugins.generic.ojtRocket.classes.db.CustomDAOResultFactory');
+    $queryResults = new CustomDAOResultFactory($result, $submissionDao, '_fromRow', [], $sql, $params, null, $functionParams);
+
     return $queryResults->toIterator();
   }
 }

@@ -15,4 +15,5 @@
 <locale name="en_US" full_name="U.S. English">
 	<message key="plugins.generic.ojtRocket.displayName">OJT Rocket Plugin</message>
 	<message key="plugins.generic.ojtRocket.description">Reduce load time to your Journal site</message>
+	<message key="plugins.generic.ojtRocket.enableInfiniteScroll">Enable infinite scroll.</message>
 </locale>

@@ -1,20 +1,21 @@
 document.addEventListener("alpine:init", () => {
   Alpine.data("loadmore", (sectionIds, url) => ({
     loading: false,
-    init() {
-      console.log(sectionIds);
-    },
-    key: 22,
+    init() {},
+    key: 1,
     getLength() {
       return sectionIds.length;
     },
     more() {
       var that = this;
-      if (this.key > this.getLength()) {
+      if (this.key >= this.getLength()) {
         return false;
       }
       this.loading = true;
+
       const sectionId = sectionIds[this.key];
+
+      this.key++;
 
       $.get(url + "?sectionId=" + sectionId, function (data) {
         if (!data) {
@@ -24,8 +25,6 @@ document.addEventListener("alpine:init", () => {
         $(".sections").append(data);
         that.loading = false;
       });
-
-      this.key++;
     },
   }));
 });

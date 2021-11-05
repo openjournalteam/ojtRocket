@@ -13,56 +13,51 @@
  *
  * @brief Add OJS-specific functions for PKPPublicationDAO
  */
+
+use Illuminate\Database\Capsule\Manager as Capsule;
+
+
 import('classes.publication.PublicationDAO');
 
 class CustomPublicationDAO extends PublicationDAO
 {
-
-    /** @copydoc SchemaDao::$primaryTableColumns */
-    public $primaryTableColumns = [
-        'id' => 'publication_id',
-        'accessStatus' => 'access_status',
-        'datePublished' => 'date_published',
-        'lastModified' => 'last_modified',
-        'locale' => 'locale',
-        'primaryContactId' => 'primary_contact_id',
-        'sectionId' => 'section_id',
-        'seq' => 'seq',
-        'submissionId' => 'submission_id',
-        'status' => 'status',
-        'urlPath' => 'url_path',
-        'version' => 'version',
-    ];
-
     /**
      * @copydoc SchemaDAO::_fromRow()
      */
     public function _fromRow($primaryRow, $args = [])
     {
         $publication = $this->_parentFromRow($primaryRow);
+
+        // Set the primary locale from the submission
+        $locale = Capsule::table('submissions as s')
+            ->where('s.submission_id', '=', $publication->getData('submissionId'))
+            ->value('locale');
+        $publication->setData('locale', $locale);
+
         $publication->setData('galleys', $args['galleys'][$publication->getId()] ?? []);
         $publication->setData('authors', $args['authors'][$publication->getId()] ?? []);
 
         // not optimized yet
-        // $submissionKeywordDao = DAORegistry::getDAO('SubmissionKeywordDAO'); /* @var $submissionKeywordDao SubmissionKeywordDAO */
-        // $publication->setData('keywords', $submissionKeywordDao->getKeywords($publication->getId()));
-        // $submissionSubjectDao = DAORegistry::getDAO('SubmissionSubjectDAO'); /* @var $submissionSubjectDao SubmissionSubjectDAO */
-        // $publication->setData('subjects', $submissionSubjectDao->getSubjects($publication->getId()));
-        // $submissionDisciplineDao = DAORegistry::getDAO('SubmissionDisciplineDAO'); /* @var $submissionDisciplineDao SubmissionDisciplineDAO */
-        // $publication->setData('disciplines', $submissionDisciplineDao->getDisciplines($publication->getId()));
-        // $submissionLanguageDao = DAORegistry::getDAO('SubmissionLanguageDAO'); /* @var $submissionLanguageDao SubmissionLanguageDAO */
-        // $publication->setData('languages', $submissionLanguageDao->getLanguages($publication->getId()));
-        // $submissionAgencyDao = DAORegistry::getDAO('SubmissionAgencyDAO'); /* @var $submissionAgencyDao SubmissionAgencyDAO */
-        // $publication->setData('supportingAgencies', $submissionAgencyDao->getAgencies($publication->getId()));
+        // Get controlled vocab metadata
+        $submissionKeywordDao = DAORegistry::getDAO('SubmissionKeywordDAO'); /* @var $submissionKeywordDao SubmissionKeywordDAO */
+        $publication->setData('keywords', $submissionKeywordDao->getKeywords($publication->getId()));
+        $submissionSubjectDao = DAORegistry::getDAO('SubmissionSubjectDAO'); /* @var $submissionSubjectDao SubmissionSubjectDAO */
+        $publication->setData('subjects', $submissionSubjectDao->getSubjects($publication->getId()));
+        $submissionDisciplineDao = DAORegistry::getDAO('SubmissionDisciplineDAO'); /* @var $submissionDisciplineDao SubmissionDisciplineDAO */
+        $publication->setData('disciplines', $submissionDisciplineDao->getDisciplines($publication->getId()));
+        $submissionLanguageDao = DAORegistry::getDAO('SubmissionLanguageDAO'); /* @var $submissionLanguageDao SubmissionLanguageDAO */
+        $publication->setData('languages', $submissionLanguageDao->getLanguages($publication->getId()));
+        $submissionAgencyDao = DAORegistry::getDAO('SubmissionAgencyDAO'); /* @var $submissionAgencyDao SubmissionAgencyDAO */
+        $publication->setData('supportingAgencies', $submissionAgencyDao->getAgencies($publication->getId()));
 
-        // // Get categories
-        // $categoryDao = DAORegistry::getDAO('CategoryDAO'); /* @var $categoryDao CategoryDAO */
-        // $publication->setData('categoryIds', array_map(
-        //     function ($category) {
-        //         return (int) $category->getId();
-        //     },
-        //     $categoryDao->getByPublicationId($publication->getId())->toArray()
-        // ));
+        // Get categories
+        $categoryDao = DAORegistry::getDAO('CategoryDAO'); /* @var $categoryDao CategoryDAO */
+        $publication->setData('categoryIds', array_map(
+            function ($category) {
+                return (int) $category->getId();
+            },
+            $categoryDao->getByPublicationId($publication->getId())->toArray()
+        ));
         return $publication;
     }
 
@@ -87,8 +82,8 @@ class CustomPublicationDAO extends PublicationDAO
             array($primaryRow[$this->primaryKeyColumn])
         );
 
-        while (!$result->EOF) {
-            $settingRow = $result->getRowAssoc(false);
+        foreach ($result as $settingRow) {
+            $settingRow = (array) $settingRow;
             if (!empty($schema->properties->{$settingRow['setting_name']})) {
                 $object->setData(
                     $settingRow['setting_name'],
@@ -99,7 +94,6 @@ class CustomPublicationDAO extends PublicationDAO
                     empty($settingRow['locale']) ? null : $settingRow['locale']
                 );
             }
-            $result->MoveNext();
         }
 
         return $object;

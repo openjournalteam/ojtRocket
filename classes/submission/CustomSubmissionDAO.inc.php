@@ -22,8 +22,9 @@ class CustomSubmissionDAO extends SubmissionDAO
   function _fromRow($row, $args = [])
   {
     $submission = $this->_parentFromRow($row);
-
-    $submission->setData('publications', $args['submissionPublications'][$submission->getId()]);
+    if (isset($args['publications']) && isset($args['publications'][$submission->getId()])) {
+      $submission->setData('publications', $args['publications'][$submission->getId()]);
+    }
 
     return $submission;
   }
@@ -49,8 +50,8 @@ class CustomSubmissionDAO extends SubmissionDAO
       array($primaryRow[$this->primaryKeyColumn])
     );
 
-    while (!$result->EOF) {
-      $settingRow = $result->getRowAssoc(false);
+    foreach ($result as $settingRow) {
+      $settingRow = (array) $settingRow;
       if (!empty($schema->properties->{$settingRow['setting_name']})) {
         $object->setData(
           $settingRow['setting_name'],
@@ -61,7 +62,6 @@ class CustomSubmissionDAO extends SubmissionDAO
           empty($settingRow['locale']) ? null : $settingRow['locale']
         );
       }
-      $result->MoveNext();
     }
 
     return $object;

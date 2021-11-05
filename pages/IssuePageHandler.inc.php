@@ -32,6 +32,7 @@ class IssuePageHandler extends IssueHandler
       $templateMgr->display('frontend/pages/issue.tpl');
     }
   }
+
   /**
    * Given an issue, set up the template with all the required variables for
    * frontend/objects/issue_toc.tpl to function properly (i.e. current issue
@@ -67,7 +68,23 @@ class IssuePageHandler extends IssueHandler
       return $genre->getId();
     }, $primaryGenres);
 
-    $issueSubmissionsInSection = static::getCachedIssueSubmissionsInSection($issue, $journal);
+    $issueSubmissions = static::getCachedIssueSubmissions($issue, $journal);
+    $sections = self::getSectionsByIssueSubmissions($issue->getId(), $issueSubmissions);
+    $issueSubmissionsInSection = [];
+    foreach ($sections as $section) {
+      $issueSubmissionsInSection[$section->getId()] = [
+        'title' => $section->getHideTitle() ? null : $section->getLocalizedTitle(),
+        'hideAuthor' => $section->getHideAuthor(),
+        'articles' => [],
+      ];
+    }
+    foreach ($issueSubmissions as $submission) {
+      if (!$sectionId = $submission->getCurrentPublication()->getData('sectionId')) {
+        continue;
+      }
+      $issueSubmissionsInSection[$sectionId]['articles'][] = $submission;
+    }
+
     $templateMgr->setCacheability(CACHEABILITY_PUBLIC);
     $templateMgr->assign(array(
       'issue' => $issue,
@@ -119,73 +136,16 @@ class IssuePageHandler extends IssueHandler
     }
   }
 
-  // static function getCachedIssueSubmissionsInSection($issue, $journal, $page = 1, $count = 10)
-  // {
-  //   $offset = ($page == 1) ? 0 : ($page - 1) * $count;
-
-  //   import('plugins.generic.ojtRocket.classes.submission.CustomSubmission');
-  //   import('plugins.generic.ojtRocket.classes.publication.CustomPublication');
-  //   import('plugins.generic.ojtRocket.classes.article.CustomAuthor');
-  //   import('plugins.generic.ojtRocket.classes.article.CustomArticleGalley');
-  //   $allowedStatuses = [STATUS_PUBLISHED];
-  //   if (!$issue->getPublished()) {
-  //     $allowedStatuses[] = STATUS_SCHEDULED;
-  //   }
-  //   $cache = CacheManager::getManager()->getCache(
-  //     'issue_submission',
-  //     $issue->getId() . '-' . $journal->getId() . '-' . $offset . '-' . $count,
-  //     function ($cache, $issueId) use ($issue, $journal, $allowedStatuses, $count, $offset) {
-  //       import('plugins.generic.ojtRocket.classes.services.CustomSubmissionService');
-  //       $submissionService = new CustomSubmissionService();
-  //       $issueSubmissions = iterator_to_array($submissionService->getMany([
-  //         'contextId' => $journal->getId(),
-  //         'issueIds' => [$issueId],
-  //         'status' => $allowedStatuses,
-  //         'orderBy' => 'seq',
-  //         'orderDirection' => 'ASC',
-  //         'count' => $count,
-  //         'offset' => $offset,
-  //       ]));
-
-  //       $sectionDao = Application::get()->getSectionDao();
-  //       $sections = self::getSectionsByIssueSubmissions($sectionDao, $issue->getId(), $issueSubmissions);
-  //       $issueSubmissionsInSection = [];
-  //       foreach ($sections as $section) {
-  //         $issueSubmissionsInSection[$section->getId()] = [
-  //           'title' => $section->getLocalizedTitle(),
-  //           'articles' => [],
-  //         ];
-  //       }
-  //       foreach ($issueSubmissions as $submission) {
-  //         if (!$sectionId = $submission->getCurrentPublication()->getData('sectionId')) {
-  //           continue;
-  //         }
-  //         $issueSubmissionsInSection[$sectionId]['articles'][] = $submission;
-  //       }
-
-
-  //       $cache->setEntireCache([
-  //         $issueId => $issueSubmissionsInSection
-  //       ]);
-
-  //       return $issueSubmissionsInSection;
-  //     }
-  //   );
-
-  //   if (time() - $cache->getCacheTime() > 60 * 60 * 6) {
-  //     $cache->flush();
-  //   }
-
-  //   return $cache->get($issue->getId());
-  // }
-  static function getCachedIssueSubmissionsInSection($issue, $journal, $sectionId = false)
+  static function getCachedIssueSubmissions($issue, $journal, $sectionIds = false)
   {
-    if (!$sectionId) {
+    $rocketPlugin = PluginRegistry::getPlugin('generic', 'ojtrocketplugin');
+
+    if (!$sectionIds && $rocketPlugin && $rocketPlugin->getSetting($journal->getId(), 'infinite_scroll')) {
       $dao = new DAO;
       $sql = 'SELECT s.section_id, COALESCE(o.seq, s.seq) AS section_seq FROM sections s LEFT JOIN custom_section_orders o ON (s.section_id = o.section_id AND o.issue_id = ?)  WHERE s.journal_id = ? ORDER BY section_seq LIMIT 1';
 
       $result = $dao->retrieve($sql, [$issue->getId(), $journal->getId()]);
-      $sectionId = $result->GetRowAssoc(false)['section_id'];
+      $sectionIds = $result->current()->section_id;
     }
 
     import('plugins.generic.ojtRocket.classes.submission.CustomSubmission');
@@ -196,55 +156,48 @@ class IssuePageHandler extends IssueHandler
     if (!$issue->getPublished()) {
       $allowedStatuses[] = STATUS_SCHEDULED;
     }
+
+    $cacheId = $issue->getId() . '-' . $journal->getId() . '-' . $sectionIds;
     $cache = CacheManager::getManager()->getCache(
       'issue_submission',
-      $issue->getId() . '-' . $journal->getId() . '-' . $sectionId,
-      function ($cache, $issueId) use ($issue, $journal, $allowedStatuses, $sectionId) {
-        import('plugins.generic.ojtRocket.classes.services.CustomSubmissionService');
-        $submissionService = new CustomSubmissionService();
-        $issueSubmissions = iterator_to_array($submissionService->getMany([
+      $cacheId,
+      function ($cache, $id) use ($issue, $journal, $allowedStatuses, $sectionIds) {
+        $args = [
           'contextId' => $journal->getId(),
-          'issueIds' => [$issueId],
+          'issueIds' => [$issue->getId()],
           'status' => $allowedStatuses,
           'orderBy' => 'seq',
           'orderDirection' => 'ASC',
-          'sectionIds' => [$sectionId],
-        ]));
+        ];
 
-        $sectionDao = Application::get()->getSectionDao();
-        $sections = self::getSectionsByIssueSubmissions($sectionDao, $issue->getId(), $issueSubmissions);
-        $issueSubmissionsInSection = [];
-        foreach ($sections as $section) {
-          $issueSubmissionsInSection[$section->getId()] = [
-            'title' => $section->getLocalizedTitle(),
-            'articles' => [],
-          ];
-        }
-        foreach ($issueSubmissions as $submission) {
-          if (!$sectionId = $submission->getCurrentPublication()->getData('sectionId')) {
-            continue;
-          }
-          $issueSubmissionsInSection[$sectionId]['articles'][] = $submission;
+        if ($sectionIds) {
+          $args['sectionIds'] = [$sectionIds];
         }
 
+        import('plugins.generic.ojtRocket.classes.services.CustomSubmissionService');
+        $submissionService = new CustomSubmissionService();
+        $issueSubmissions = iterator_to_array($submissionService->getMany($args));
 
         $cache->setEntireCache([
-          $issueId => $issueSubmissionsInSection
+          $id => $issueSubmissions
         ]);
 
-        return $issueSubmissionsInSection;
+        return $issueSubmissions;
       }
     );
 
-    if (time() - $cache->getCacheTime() > 60 * 60 * 6) {
+
+    // if (time() - $cache->getCacheTime() > 60 * 60 * 6) {
+    if (time() - $cache->getCacheTime() > 1) {
       $cache->flush();
     }
 
     return $cache->get($issue->getId());
   }
 
-  static function getSectionsByIssueSubmissions($sectionDao, $issueId, $issueSubmissions)
+  static function getSectionsByIssueSubmissions($issueId, $issueSubmissions)
   {
+    $sectionDao = Application::get()->getSectionDao();
     $sectionIds = [];
     foreach ($issueSubmissions as $submission) {
       $sectionIds[] = $submission->getCurrentPublication()->getData('sectionId');
@@ -262,15 +215,11 @@ class IssuePageHandler extends IssueHandler
       array_merge([(int) $issueId], $sectionIds)
     );
 
-    $returner = array();
-    while (!$result->EOF) {
-      $row = $result->GetRowAssoc(false);
-      $returner[] = $sectionDao->_fromRow($row);
-      $result->MoveNext();
+    $sections = [];
+    foreach ($result as $row) {
+      $sections[] = $sectionDao->_fromRow((array) $row);
     }
-
-    $result->Close();
-    return $returner;
+    return $sections;
   }
 
   public function pagination($args, $request)
@@ -304,7 +253,23 @@ class IssuePageHandler extends IssueHandler
       return $genre->getId();
     }, $primaryGenres);
 
-    $issueSubmissionsInSection = static::getCachedIssueSubmissionsInSection($issue, $journal, $sectionId);
+    $issueSubmissions = static::getCachedIssueSubmissions($issue, $journal, $sectionId);
+    $sections = self::getSectionsByIssueSubmissions($issue->getId(), $issueSubmissions);
+    $issueSubmissionsInSection = [];
+    foreach ($sections as $section) {
+      $issueSubmissionsInSection[$section->getId()] = [
+        'title' => $section->getHideTitle() ? null : $section->getLocalizedTitle(),
+        'hideAuthor' => $section->getHideAuthor(),
+        'articles' => [],
+      ];
+    }
+    foreach ($issueSubmissions as $submission) {
+      if (!$sectionId = $submission->getCurrentPublication()->getData('sectionId')) {
+        continue;
+      }
+      $issueSubmissionsInSection[$sectionId]['articles'][] = $submission;
+    }
+
     $templateMgr->setCacheability(CACHEABILITY_PUBLIC);
     $templateMgr->assign(array(
       'issue' => $issue,
@@ -312,8 +277,6 @@ class IssuePageHandler extends IssueHandler
       'publishedSubmissions' => $issueSubmissionsInSection,
       'primaryGenreIds' => $primaryGenreIds,
     ));
-
-
 
     // Subscription Access
     import('classes.issue.IssueAction');
@@ -356,10 +319,9 @@ class IssuePageHandler extends IssueHandler
     if ($paymentManager->purchaseArticleEnabled()) {
       $templateMgr->assign('purchaseArticleEnabled', true);
     }
-
-    $rocketPlugin = PluginRegistry::getPlugin('generic', 'ojtrocketplugin');
+    // $rocketPlugin = PluginRegistry::getPlugin('generic', 'ojtrocketplugin');
     header('Content-Type: text/html; charset=' . Config::getVar('i18n', 'client_charset'));
-    header('Cache-Control: ' . $this->_cacheability);
-    echo $templateMgr->fetch($rocketPlugin->getTemplateResource('objects/issue_toc_sections_pagination.tpl'));
+    header('Cache-Control: ' . $templateMgr->_cacheability);
+    echo $templateMgr->fetch('frontend/objects/issue_toc_sections_pagination.tpl');
   }
 }
