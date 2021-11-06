@@ -1,14 +1,12 @@
 document.addEventListener("alpine:init", () => {
   Alpine.data("loadmore", (sectionIds, url) => ({
     loading: false,
-    init() {},
     key: 1,
-    getLength() {
-      return sectionIds.length;
-    },
+    init() {},
+    sectionIdsLength: () => sectionIds.length,
     more() {
       var that = this;
-      if (this.key >= this.getLength()) {
+      if (this.key >= this.sectionIdsLength()) {
         return false;
       }
       this.loading = true;
