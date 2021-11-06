@@ -25,7 +25,6 @@ class OjtRocketPlugin extends GenericPlugin
 		if ($success && $this->getEnabled()) {
 			// Display the publication statement on the article details page
 			HookRegistry::register('LoadHandler', [$this, 'setPageHandler']);
-			HookRegistry::register('Templates::Common::Footer::PageFooter', [$this, 'appendFooter']);
 		}
 		return $success;
 	}
@@ -85,47 +84,6 @@ class OjtRocketPlugin extends GenericPlugin
 	public function getDescription()
 	{
 		return 'Reduce load time to your Journal site';
-	}
-
-	function appendFooter($hookName, $args)
-	{
-		$templateMgr = $args[1];
-		$currentPage = $templateMgr->getTemplateVars('requestedPage') . '/' . $templateMgr->getTemplateVars('requestedOp');
-
-		$acceptPages = [
-			'/index',
-			'index/index',
-			'issue/view',
-		];
-
-		if (!in_array($currentPage, $acceptPages)) return false;
-		if (!$issue = $templateMgr->getTemplateVars('issue')) return false;
-		if (!$journal = $templateMgr->getTemplateVars('currentContext')) return false;
-
-		$dao = new DAO;
-		$sql = 'SELECT s.section_id, COALESCE(o.seq, s.seq) AS section_seq FROM sections s LEFT JOIN custom_section_orders o ON (s.section_id = o.section_id AND o.issue_id = ?)  WHERE s.journal_id = ? ORDER BY section_seq';
-
-		$result = $dao->retrieve($sql, [$issue->getId(), $journal->getId()]);
-		$sectionIds = [];
-
-		while (!$result->EOF) {
-			$row = $result->getRowAssoc(false);
-			$sectionIds[] = $row['section_id'];
-			$result->MoveNext();
-		}
-
-		$request = $this->getRequest();
-
-		$paginationUrl = $request->getDispatcher()->url($request, ROUTE_PAGE, $request->getContext()) . '/issue/pagination/' . $issue->getId();
-
-
-		$templateMgr->assign('paginationUrl', $paginationUrl);
-		$templateMgr->assign('sectionIds', htmlspecialchars(json_encode($sectionIds), ENT_QUOTES, 'UTF-8'));
-		$templateMgr->assign('ojtRocket', $this);
-
-
-		$args[2]  = $templateMgr->fetch($this->getTemplateResource('components/footer_extend.tpl'));
-		return true;
 	}
 
 	public function getAssetUrl($asset)
