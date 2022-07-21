@@ -43,14 +43,18 @@ jobs:
           files: ./s3_upload/
           dest: ./s3_upload/zipped/${{steps.json_properties.outputs.name}}.zip
       # Copy the version.xml file to the zipped folder
-      - name: Create folder and removing .git and .github dir
+      - name: Copy the version.xml file
         run: |
           cp -p ./version.xml ./s3_upload/zipped/version.xml     
+
+      - name: Copy the preview.jpg file
+        run: |
+          cp -p ./preview.jpg ./s3_upload/zipped/preview.jpg   
       #everthing is working now, then upload
       - name: Upload Zip File to S3 Folder
         uses: jakejarvis/s3-sync-action@master
         with:
-          args: --acl public-read --follow-symlinks --delete --exclude './.git/*' --exclude './.github/*'
+          args: --acl public-read --follow-symlinks --delete --exclude './.git/*' --exclude './.github/*' --exclude './.vscode/*'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
